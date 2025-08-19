@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>High Load Chat Room</title>
+    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            background: #2c3e50;
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        
+        .auth-section {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .chat-container {
+            display: grid;
+            grid-template-columns: 250px 1fr 200px;
+            gap: 20px;
+        }
+        
+        .rooms-panel {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            height: fit-content;
+        }
+        
+        .chat-panel {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .users-panel {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            height: fit-content;
+        }
+        
+        .messages {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            max-height: 400px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .message {
+            margin-bottom: 10px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+        
+        .message-input {
+            padding: 20px;
+            display: flex;
+            gap: 10px;
+        }
+        
+        input, button, select {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        
+        button {
+            background: #007bff;
+            color: white;
+            cursor: pointer;
+        }
+        
+        button:hover {
+            background: #0056b3;
+        }
+        
+        .room-item {
+            padding: 10px;
+            margin: 5px 0;
+            background: #f8f9fa;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        
+        .room-item.active {
+            background: #007bff;
+            color: white;
+        }
+        
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .hidden {
+            display: none;
+        }
+        
+        .typing-indicator {
+            font-style: italic;
+            color: #6c757d;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>High Load Chat Room</h1>
+            <p>Microservices Architecture with Socket.IO, Redis, and gRPC</p>
+        </div>
+        
+        <div class="auth-section" id="authSection">
+            <h3>Authentication</h3>
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <input type="text" id="usernameInput" placeholder="Enter username" required>
+                <button onclick="authenticate()">Connect</button>
+            </div>
+            <div id="authStatus"></div>
+        </div>
+        
+        <div class="chat-container hidden" id="chatContainer">
+            <div class="rooms-panel">
+                <h3>Rooms</h3>
+                <div style="margin: 10px 0;">
+                    <input type="text" id="roomNameInput" placeholder="Room name">
+                    <button onclick="createRoom()">Create</button>
+                </div>
+                <div id="roomsList"></div>
+            </div>
+            
+            <div class="chat-panel">
+                <div class="messages" id="messages"></div>
+                <div id="typingIndicator" class="typing-indicator"></div>
+                <div class="message-input">
+                    <input type="text" id="messageInput" placeholder="Type a message..." disabled>
+                    <button onclick="sendMessage()" id="sendButton" disabled>Send</button>
+                </div>
+            </div>
+            
+            <div class="users-panel">
+                <h3>Online Users</h3>
+                <div id="usersList"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let socket = null;
+        let currentUser = null;
+        let currentRoom = null;
+        let typingTimer = null;
+        
+        // Authentication
+        function authenticate() {
+            const username = document.getElementById('usernameInput').value.trim();
+            if (!username) {
+                showStatus('Please enter a username', 'error');
+                return;
+            }
+            
+            // Connect to Socket.IO
+            socket = io('http://localhost', {
+                transports: ['websocket', 'polling']
+            });
+            
+            socket.on('connect', () => {
+                console.log('Connected to server');
+                
+                // Authenticate
+                socket.emit('authenticate', {
+                    userId: generateUserId(),
+                    username: username
+                });
+            });
+            
+            socket.on('authenticated', (data) => {
+                currentUser = data;
+                showStatus(`Connected as ${data.username}`, 'success');
+                
+                document.getElementById('authSection').classList.add('hidden');
+                document.getElementById('chatContainer').classList.remove('hidden');
+                
+                loadRooms();
+            });
+            
+            socket.on('auth-error', (data) => {
+                showStatus(`Authentication failed: ${data.message}`, 'error');
+            });
+            
+            socket.on('error', (data) => {
+                showStatus(`Error: ${data.message}`, 'error');
+            });
+            
+            // Room events
+            socket.on('room-joined', (data) => {
+                showStatus(`Joined room: ${data.roomId}`, 'success');
+                currentRoom = data.roomId;
+                enableChat();
+                getOnlineUsers();
+                loadMessages();
+            });
+            
+            socket.on('room-left', (data) => {
+                showStatus(`Left room: ${data.roomId}`, 'success');
+                currentRoom = null;
+                disableChat();
+                clearMessages();
+            });
+            
+            // Message events
+            socket.on('new-message', (data) => {
+                displayMessage(data);
+            });
+            
+            // User events
+            socket.on('user-joined', (data) => {
+                showStatus(`${data.username} joined the room`, 'success');
+                getOnlineUsers();
+            });
+            
+            socket.on('user-left', (data) => {
+                showStatus(`${data.username} left the room`, 'success');
+                getOnlineUsers();
+            });
+            
+            socket.on('online-users', (data) => {
+                displayOnlineUsers(data.users);
+            });
+            
+            // Typing events
+            socket.on('user-typing', (data) => {
+                showTypingIndicator(data);
+            });
+            
+            socket.on('disconnect', () => {
+                showStatus('Disconnected from server', 'error');
+            });
+        }
+        
+        // Generate random user ID
+        function generateUserId() {
+            return 'user_' + Math.random().toString(36).substr(2, 9);
+        }
+        
+        // Load rooms from API
+        async function loadRooms() {
+            try {
+                const response = await fetch('/api/rooms');
+                const rooms = await response.json();
+                displayRooms(rooms);
+            } catch (error) {
+                console.error('Failed to load rooms:', error);
+            }
+        }
+        
+        // Create new room
+        async function createRoom() {
+            const roomName = document.getElementById('roomNameInput').value.trim();
+            if (!roomName) {
+                showStatus('Please enter a room name', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/rooms', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        name: roomName,
+                        description: `Room created by ${currentUser.username}`
+                    })
+                });
+                
+                const result = await response.json();
+                showStatus(`Room "${roomName}" created successfully`, 'success');
+                document.getElementById('roomNameInput').value = '';
+                loadRooms();
+            } catch (error) {
+                showStatus('Failed to create room', 'error');
+                console.error('Create room error:', error);
+            }
+        }
+        
+        // Display rooms
+        function displayRooms(rooms) {
+            const roomsList = document.getElementById('roomsList');
+            roomsList.innerHTML = '';
+            
+            rooms.forEach(room => {
+                const roomItem = document.createElement('div');
+                roomItem.className = 'room-item';
+                roomItem.innerHTML = `
+                    <strong>${room.name}</strong><br>
+                    <small>Members: ${room.memberCount}</small>
+                `;
+                roomItem.onclick = () => joinRoom(room.id);
+                roomsList.appendChild(roomItem);
+            });
+        }
+        
+        // Join room
+        function joinRoom(roomId) {
+            if (currentRoom) {
+                socket.emit('leave-room', { roomId: currentRoom });
+            }
+            
+            socket.emit('join-room', { roomId });
+            
+            // Update UI
+            document.querySelectorAll('.room-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            event.target.closest('.room-item').classList.add('active');
+        }
+        
+        // Send message
+        function sendMessage() {
+            const messageInput = document.getElementById('messageInput');
+            const message = messageInput.value.trim();
+            
+            if (!message || !currentRoom) return;
+            
+            socket.emit('send-message', {
+                roomId: currentRoom,
+                message: message
+            });
+            
+            messageInput.value = '';
+            stopTyping();
+        }
+        
+        // Display message
+        function displayMessage(data) {
+            const messagesDiv = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message';
+            
+            const timestamp = new Date(data.timestamp).toLocaleTimeString();
+            messageDiv.innerHTML = `
+                <strong>${data.username || data.userId}</strong> 
+                <small>(${timestamp})</small><br>
+                ${data.content}
+            `;
+            
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+        
+        // Load messages
+        async function loadMessages() {
+            if (!currentRoom) return;
+            
+            try {
+                const response = await fetch(`/api/rooms/${currentRoom}/messages?limit=50`);
+                const messages = await response.json();
+                
+                const messagesDiv = document.getElementById('messages');
+                messagesDiv.innerHTML = '';
+                
+                messages.reverse().forEach(message => {
+                    displayMessage(message);
+                });
+            } catch (error) {
+                console.error('Failed to load messages:', error);
+            }
+        }
+        
+        // Get online users
+        function getOnlineUsers() {
+            if (!currentRoom) return;
+            socket.emit('get-online-users', { roomId: currentRoom });
+        }
+        
+        // Display online users
+        function displayOnlineUsers(users) {
+            const usersList = document.getElementById('usersList');
+            usersList.innerHTML = '';
+            
+            users.forEach(user => {
+                const userDiv = document.createElement('div');
+                userDiv.innerHTML = `<strong>${user.username || user.userId}</strong>`;
+                usersList.appendChild(userDiv);
+            });
+        }
+        
+        // Typing indicators
+        function startTyping() {
+            if (!currentRoom) return;
+            socket.emit('typing-start', { roomId: currentRoom });
+        }
+        
+        function stopTyping() {
+            if (!currentRoom) return;
+            socket.emit('typing-stop', { roomId: currentRoom });
+        }
+        
+        function showTypingIndicator(data) {
+            const indicator = document.getElementById('typingIndicator');
+            if (data.isTyping) {
+                indicator.textContent = `${data.username} is typing...`;
+            } else {
+                indicator.textContent = '';
+            }
+        }
+        
+        // Utility functions
+        function enableChat() {
+            document.getElementById('messageInput').disabled = false;
+            document.getElementById('sendButton').disabled = false;
+        }
+        
+        function disableChat() {
+            document.getElementById('messageInput').disabled = true;
+            document.getElementById('sendButton').disabled = true;
+        }
+        
+        function clearMessages() {
+            document.getElementById('messages').innerHTML = '';
+            document.getElementById('usersList').innerHTML = '';
+        }
+        
+        function showStatus(message, type) {
+            const authStatus = document.getElementById('authStatus');
+            authStatus.innerHTML = `<div class="status ${type}">${message}</div>`;
+            
+            // Auto-hide success messages
+            if (type === 'success') {
+                setTimeout(() => {
+                    authStatus.innerHTML = '';
+                }, 3000);
+            }
+        }
+        
+        // Event listeners
+        document.getElementById('messageInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendMessage();
+            } else {
+                startTyping();
+                clearTimeout(typingTimer);
+                typingTimer = setTimeout(stopTyping, 1000);
+            }
+        });
+        
+        document.getElementById('usernameInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                authenticate();
+            }
+        });
+        
+        document.getElementById('roomNameInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                createRoom();
+            }
+        });
+    </script>
+</body>
+</html>

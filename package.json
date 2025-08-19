@@ -1,0 +1,21 @@
+{
+  "name": "chat-high-load",
+  "version": "1.0.0",
+  "description": "High load chat room application with microservices architecture",
+  "main": "index.js",
+  "scripts": {
+    "dev": "concurrently \"npm run gateway\" \"npm run chat-service\" \"npm run load-balancer\"",
+    "gateway": "cd gateway-service && npm start",
+    "chat-service": "cd chat-service && npm start",
+    "load-balancer": "nginx -c nginx.conf",
+    "setup": "npm run setup:gateway && npm run setup:chat",
+    "setup:gateway": "cd gateway-service && npm install",
+    "setup:chat": "cd chat-service && npm install"
+  },
+  "keywords": ["chat", "socket.io", "redis", "grpc", "microservices", "high-load"],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

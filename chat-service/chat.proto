@@ -1,0 +1,125 @@
+syntax = "proto3";
+
+package chat;
+
+// Chat Service Definition
+service ChatService {
+  // Health check
+  rpc Ping(PingRequest) returns (PingResponse);
+  
+  // Room management
+  rpc CreateRoom(CreateRoomRequest) returns (CreateRoomResponse);
+  rpc GetRooms(GetRoomsRequest) returns (GetRoomsResponse);
+  
+  // User management
+  rpc JoinRoom(JoinRoomRequest) returns (JoinRoomResponse);
+  rpc LeaveRoom(LeaveRoomRequest) returns (LeaveRoomResponse);
+  rpc GetUsersInRoom(GetUsersInRoomRequest) returns (GetUsersInRoomResponse);
+  
+  // Message management
+  rpc SendMessage(SendMessageRequest) returns (SendMessageResponse);
+  rpc GetMessages(GetMessagesRequest) returns (GetMessagesResponse);
+}
+
+// Request/Response Messages
+
+// Ping
+message PingRequest {}
+
+message PingResponse {
+  bool success = 1;
+  string message = 2;
+  string timestamp = 3;
+}
+
+// Room Management
+message CreateRoomRequest {
+  string name = 1;
+  string description = 2;
+}
+
+message CreateRoomResponse {
+  Room room = 1;
+}
+
+message GetRoomsRequest {}
+
+message GetRoomsResponse {
+  repeated Room rooms = 1;
+}
+
+// User Management
+message JoinRoomRequest {
+  string userId = 1;
+  string roomId = 2;
+}
+
+message JoinRoomResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message LeaveRoomRequest {
+  string userId = 1;
+  string roomId = 2;
+}
+
+message LeaveRoomResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message GetUsersInRoomRequest {
+  string roomId = 1;
+}
+
+message GetUsersInRoomResponse {
+  repeated User users = 1;
+}
+
+// Message Management
+message SendMessageRequest {
+  string userId = 1;
+  string roomId = 2;
+  string content = 3;
+  string timestamp = 4;
+}
+
+message SendMessageResponse {
+  Message message = 1;
+  bool success = 2;
+}
+
+message GetMessagesRequest {
+  string roomId = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}
+
+message GetMessagesResponse {
+  repeated Message messages = 1;
+}
+
+// Data Models
+message Room {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  string createdAt = 4;
+  int32 memberCount = 5;
+}
+
+message User {
+  string userId = 1;
+  string username = 2;
+  string joinedAt = 3;
+}
+
+message Message {
+  string id = 1;
+  string userId = 2;
+  string roomId = 3;
+  string content = 4;
+  string timestamp = 5;
+  string type = 6;
+}

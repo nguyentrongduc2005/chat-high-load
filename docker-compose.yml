@@ -1,0 +1,102 @@
+services:
+  # Redis for caching and pub/sub
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - chat_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Chat Service instances
+  chat-service-1:
+    build: ./chat-service
+    ports:
+      - "50051:50051"
+    environment:
+      - GRPC_PORT=50051
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - chat_network
+    restart: unless-stopped
+
+  # Gateway Service instances
+  gateway-service-1:
+    build: ./gateway-service
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - GRPC_HOST=chat-service-1
+      - GRPC_PORT=50051
+    depends_on:
+      - chat-service-1
+    networks:
+      - chat_network
+    restart: unless-stopped
+
+  gateway-service-2:
+    build: ./gateway-service
+    ports:
+      - "3002:3002"
+    environment:
+      - PORT=3002
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - GRPC_HOST=chat-service-1
+      - GRPC_PORT=50051
+    depends_on:
+      - chat-service-1
+    networks:
+      - chat_network
+    restart: unless-stopped
+
+  gateway-service-3:
+    build: ./gateway-service
+    ports:
+      - "3003:3003"
+    environment:
+      - PORT=3003
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - GRPC_HOST=chat-service-1
+      - GRPC_PORT=50051
+    depends_on:
+      - chat-service-1
+    networks:
+      - chat_network
+    restart: unless-stopped
+
+  # Load Balancer (Nginx)
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+    depends_on:
+      - gateway-service-1
+      - gateway-service-2
+      - gateway-service-3
+    networks:
+      - chat_network
+
+volumes:
+  redis_data:
+
+networks:
+  chat_network:
+    driver: bridge
